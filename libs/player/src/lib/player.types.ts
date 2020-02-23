@@ -2,7 +2,7 @@ import { SafeUrl } from '@angular/platform-browser';
 
 export interface Song {
   url: string;
-  fileHandle: unknown;
+  fileHandle: any;
   type?: string;
   metadata: SongMetadata;
   playlistPosition?: number;

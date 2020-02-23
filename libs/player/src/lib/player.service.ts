@@ -11,7 +11,8 @@ export class PlayerService {
   private audioCtx: AudioContext;
   private gainNode: GainNode;
   private analyserNode: AnalyserNode;
-  private audioSrcNode: MediaElementAudioSourceNode;
+  private audioSrcNode: AudioBufferSourceNode; // TODO: write wrapper for stop pause and duration funtions
+  private audioBuffer: AudioBuffer;
 
   private _songs: Song[] = [];
   get songs(): Song[] {
@@ -25,16 +26,6 @@ export class PlayerService {
   get playingSong(): Song {
     return this._playingSong;
   }
-  set playingSong(song: Song) {
-    this.audioElement.src = song.url;
-    this._playingSong = song;
-
-    this.setBrowserMetadata(song.metadata);
-
-    this.audioSrcNode.connect(this.analyserNode);
-  }
-
-  audioElement: HTMLAudioElement;
 
   selectedSong: Song;
 
@@ -61,19 +52,6 @@ export class PlayerService {
   }
 
   initialzeAudioNodes() {
-    const audio = new Audio();
-    audio.loop = false;
-    audio.autoplay = false;
-    audio.controls = false;
-    audio.preload = 'metadata';
-    audio.onended = () => {
-      console.log('ended');
-      this.next();
-    };
-    audio.onerror = (e) => {
-      console.error(e);
-    };
-
     this.audioCtx = new AudioContext();
 
     const analyser = this.audioCtx.createAnalyser();
@@ -84,8 +62,29 @@ export class PlayerService {
 
     this.analyserNode = analyser;
     this.gainNode = gainNode;
-    this.audioElement = audio;
-    this.audioSrcNode = this.audioCtx.createMediaElementSource(this.audioElement);
+  }
+
+  async setPlayingSong(song: Song) {
+    const file: File = await song.fileHandle.getFile();
+    // @ts-ignore
+    const arrayBuffer = await file.arrayBuffer();
+    const bufferSrc = this.audioCtx.createBufferSource();
+
+    let audioBuffer: AudioBuffer;
+    try {
+      audioBuffer = await this.audioCtx.decodeAudioData(arrayBuffer);
+      bufferSrc.buffer = audioBuffer;
+    } catch (e) {
+      console.error(e);
+    }
+
+    this.setBrowserMetadata(song.metadata);
+
+    bufferSrc.connect(this.analyserNode);
+
+    this.audioBuffer = audioBuffer;
+    this.audioSrcNode = bufferSrc;
+    this._playingSong = song;
   }
 
   async loadFolder() {
@@ -127,20 +126,19 @@ export class PlayerService {
   }
 
   setSeekPosition(sliderValue) {
-    // this.currentSong.howl.seek(sliderValue);
-    this.audioElement.currentTime = sliderValue;
+    this.audioSrcNode.stop(0);
+    this.audioSrcNode.start(0, sliderValue);
   }
 
   get durationSeconds(): number {
-    // return this.currentSong ? Math.round(this.currentSong.howl.duration()) : 0;
-    return this.playingSong ? Math.round(this.audioElement.duration) : 0;
+    return this.playingSong ? Math.round(this.audioBuffer.duration) : 0;
   }
 
   get currentTime(): number {
     if (!this.playingSong) {
       return 0;
     }
-    const pos = this.audioElement.currentTime;
+    const pos = null;
     if (pos !== null && pos !== undefined) {
       return Math.floor(pos);
     } else {
@@ -156,7 +154,7 @@ export class PlayerService {
 
     this.stop();
 
-    this.playingSong = song;
+    this.setPlayingSong(song);
 
     return this.audioElement.play();
   }
